@@ -1,15 +1,16 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import os
+import json
 
 app = FastAPI()
 
 # Enable CORS for Bolt
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Replace "*" with your Netlify domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,7 +27,6 @@ class EmailRequest(BaseModel):
 async def send_email(payload: EmailRequest):
     print("✅ Received payload:", payload.dict())
 
-    # Compose HTML content
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -35,15 +35,15 @@ async def send_email(payload: EmailRequest):
         <style>
             body {{ font-family: Arial, sans-serif; line-height: 1.5; color: #333; }}
             table {{ border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 14px; }}
-            th, td {{ padding: 10px; border: 1px solid #ddd; text-align: left; }}
+            th, td {{ padding: 10px; border: 1px solid #ddd; text-align: left; vertical-align: top; }}
             th {{ background-color: #f5f5f5; }}
             h2 {{ color: #1a1a1a; }}
             p.footer {{ margin-top: 24px; }}
         </style>
     </head>
     <body>
-        <h2>Hello Recruiter,</h2>
-        <p>Here is the list of shortlisted candidates for your review:</p>
+        <h2>Hello {payload.recipient_name},</h2>
+        <p style="color: purple;">Here is the list of shortlisted candidates for your review:</p>
         <table>
             <thead>
                 <tr>
@@ -65,24 +65,38 @@ async def send_email(payload: EmailRequest):
             <tbody>
     """
 
+    def parse_list(value):
+        if isinstance(value, list):
+            return ", ".join(value) if value else "—"
+        elif isinstance(value, str):
+            cleaned = value.strip("[]").replace("'", "").strip()
+            return cleaned if cleaned else "—"
+        return "—"
+
     for candidate in payload.candidates:
         name = candidate.get("Name", "—")
-        tags = candidate.get("Tags", "—")
-        bio = candidate.get("Bio", "—")
-        skills = ", ".join(candidate.get("Skills", [])) if isinstance(candidate.get("Skills"), list) else candidate.get("Skills", "—")
-        badges = ", ".join(candidate.get("Badges", [])) if isinstance(candidate.get("Badges"), list) else candidate.get("Badges", "—")
-        certifications = ", ".join(candidate.get("Certifications", [])) if candidate.get("Certifications") else "—"
-        internship = candidate.get("Internship Preferences", "—")
-        email = candidate.get("Email", "—")
-        phone = candidate.get("Phone", "—")
-        cgpa = candidate.get("CGPA", "—")
-        coding_hours = candidate.get("Coding Hours", "—")
-        projects_completed = candidate.get("Projects Completed", "—")
+        tags = candidate.get("Tags") or "—"
+        bio = candidate.get("Bio") or "—"
+        skills = parse_list(candidate.get("Skills"))
+        badges = parse_list(candidate.get("Badges"))
+        certifications = parse_list(candidate.get("Certifications"))
+        internship = candidate.get("Internship Preferences") or "—"
+        email = candidate.get("Email") or "—"
+        phone = candidate.get("Phone") or "—"
+        cgpa = candidate.get("CGPA") or "—"
+        coding_hours = candidate.get("Coding Hours") or "—"
+        projects_completed = candidate.get("Projects Completed") or "—"
 
-        # Top Project
+        # Handle Top Project dict
         project_data = candidate.get("Top Project", {})
+        if isinstance(project_data, str):
+            try:
+                project_data = json.loads(project_data)
+            except:
+                project_data = {}
+
         project_html = "—"
-        if project_data:
+        if isinstance(project_data, dict) and project_data.get("Name"):
             pname = project_data.get("Name", "")
             pdesc = project_data.get("Description", "")
             plink = project_data.get("Link", "#")
@@ -109,7 +123,7 @@ async def send_email(payload: EmailRequest):
     html_content += """
             </tbody>
         </table>
-        <p class='footer'>
+        <p class="footer">
             Best regards,<br>
             <strong>Polaris Campus Team</strong>
         </p>
@@ -117,7 +131,7 @@ async def send_email(payload: EmailRequest):
     </html>
     """
 
-    # Prepare payload for Classplus internal email API
+    # Prepare payload for Classplus Email API
     data = {
         "orgId": 170,
         "senderId": 1,
@@ -132,24 +146,29 @@ async def send_email(payload: EmailRequest):
             "attachmentUrls": []
         },
         "priority": "P2",
-        "uuid": "polaris-2025-final-candidate-email"
+        "uuid": "polaris-2025-final-clean"
     }
 
-    access_key = os.getenv("ACCESS_KEY", "N6FPaqWCG58jH0d7u7Qoh7xTugP5Mw_IJQGjbRnQXKuImDL-9hCaVFQg")
     api_url = "https://ce-api.classplus.co/v3/Communications/email/internal/superuser"
-    
+    access_key = os.getenv("EMAIL_API_KEY") or "your_access_key_here"
+
     headers = {
         "accessKey": access_key,
         "Content-Type": "application/json"
     }
 
+    # Send the request
     try:
         response = requests.post(api_url, json=data, headers=headers)
+        print("📨 Status Code:", response.status_code)
+        print("📨 Response:", response.text)
+
         return {
             "status": "✅ Sent successfully" if response.status_code == 200 else "❌ Failed to send",
             "details": response.text
         }
     except Exception as e:
+        print("❌ Exception occurred while sending email:", str(e))
         return {
             "status": "❌ Failed to send",
             "details": str(e)
