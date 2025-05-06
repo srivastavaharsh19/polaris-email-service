@@ -6,10 +6,10 @@ import os
 
 app = FastAPI()
 
-# CORS for Bolt
+# Enable CORS for Bolt
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to your domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,23 +26,23 @@ class EmailRequest(BaseModel):
 async def send_email(payload: EmailRequest):
     print("✅ Received payload:", payload.dict())
 
-    # Build HTML
-    html = """
+    # Compose HTML content
+    html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
         <style>
-            body { font-family: Arial, sans-serif; color: #333; line-height: 1.5; }
-            table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
-            th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-            th { background-color: #f5f5f5; }
-            a { color: #2a7ae2; text-decoration: none; }
-            p.footer { margin-top: 24px; }
+            body {{ font-family: Arial, sans-serif; line-height: 1.5; color: #333; }}
+            table {{ border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 14px; }}
+            th, td {{ padding: 10px; border: 1px solid #ddd; text-align: left; }}
+            th {{ background-color: #f5f5f5; }}
+            h2 {{ color: #1a1a1a; }}
+            p.footer {{ margin-top: 24px; }}
         </style>
     </head>
     <body>
-        <h2>Hello {recipient_name},</h2>
+        <h2>Hello Recruiter,</h2>
         <p>Here is the list of shortlisted candidates for your review:</p>
         <table>
             <thead>
@@ -63,31 +63,53 @@ async def send_email(payload: EmailRequest):
                 </tr>
             </thead>
             <tbody>
-    """.replace("{recipient_name}", payload.recipient_name)
+    """
 
-    for c in payload.candidates:
-        html += f"""
+    for candidate in payload.candidates:
+        name = candidate.get("Name", "—")
+        tags = candidate.get("Tags", "—")
+        bio = candidate.get("Bio", "—")
+        skills = ", ".join(candidate.get("Skills", [])) if isinstance(candidate.get("Skills"), list) else candidate.get("Skills", "—")
+        badges = ", ".join(candidate.get("Badges", [])) if isinstance(candidate.get("Badges"), list) else candidate.get("Badges", "—")
+        certifications = ", ".join(candidate.get("Certifications", [])) if candidate.get("Certifications") else "—"
+        internship = candidate.get("Internship Preferences", "—")
+        email = candidate.get("Email", "—")
+        phone = candidate.get("Phone", "—")
+        cgpa = candidate.get("CGPA", "—")
+        coding_hours = candidate.get("Coding Hours", "—")
+        projects_completed = candidate.get("Projects Completed", "—")
+
+        # Top Project
+        project_data = candidate.get("Top Project", {})
+        project_html = "—"
+        if project_data:
+            pname = project_data.get("Name", "")
+            pdesc = project_data.get("Description", "")
+            plink = project_data.get("Link", "#")
+            project_html = f"<strong>{pname}</strong><br>{pdesc}<br><a href='{plink}'>View Project</a>"
+
+        html_content += f"""
             <tr>
-                <td>{c.get('Name', '')}</td>
-                <td>{c.get('Tags', '')}</td>
-                <td>{c.get('Bio', '')}</td>
-                <td>{', '.join(c.get('Skills', []))}</td>
-                <td>{c.get('Badges', '')}</td>
-                <td>{c.get('Coding_Hours', '')}</td>
-                <td>{c.get('Projects_Completed', '')}</td>
-                <td><strong>{c.get('Top_Project_Name', '')}</strong><br>{c.get('Top_Project_Description', '')}<br><a href="{c.get('Top_Project_Link', '#')}">View Project</a></td>
-                <td>{c.get('Certifications', '')}</td>
-                <td>{c.get('Internship_Preferences', '')}</td>
-                <td>{c.get('Email', '')}</td>
-                <td>{c.get('Phone', '')}</td>
-                <td>{c.get('CGPA', '')}</td>
+                <td>{name}</td>
+                <td>{tags}</td>
+                <td>{bio}</td>
+                <td>{skills}</td>
+                <td>{badges}</td>
+                <td>{coding_hours}</td>
+                <td>{projects_completed}</td>
+                <td>{project_html}</td>
+                <td>{certifications}</td>
+                <td>{internship}</td>
+                <td>{email}</td>
+                <td>{phone}</td>
+                <td>{cgpa}</td>
             </tr>
         """
 
-    html += """
+    html_content += """
             </tbody>
         </table>
-        <p class="footer">
+        <p class='footer'>
             Best regards,<br>
             <strong>Polaris Campus Team</strong>
         </p>
@@ -95,7 +117,7 @@ async def send_email(payload: EmailRequest):
     </html>
     """
 
-    # Prepare email payload for internal API
+    # Prepare payload for Classplus internal email API
     data = {
         "orgId": 170,
         "senderId": 1,
@@ -106,40 +128,29 @@ async def send_email(payload: EmailRequest):
             "from": "pst@ce.classplus.co",
             "templateData": [],
             "subject": payload.subject,
-            "content": html,
+            "content": html_content,
             "attachmentUrls": []
         },
         "priority": "P2",
-        "uuid": "polaris-2025-full-final"
+        "uuid": "polaris-2025-final-candidate-email"
     }
 
+    access_key = os.getenv("ACCESS_KEY", "N6FPaqWCG58jH0d7u7Qoh7xTugP5Mw_IJQGjbRnQXKuImDL-9hCaVFQg")
+    api_url = "https://ce-api.classplus.co/v3/Communications/email/internal/superuser"
+    
     headers = {
-        "accessKey": "N6FPaqWCG58jH0d7u7Qoh7xTugP5Mw_IJQGjbRnQXKuImDL-9hCaVFQg",
+        "accessKey": access_key,
         "Content-Type": "application/json"
     }
 
-    # Debug logs
-    print("🔑 API Key Loaded")
-    print("📬 Sending from:", data["email"]["from"])
-    print("📬 Sending to:", data["email"]["to"])
-    print("📦 Payload:", data)
-
-    # Make POST request
     try:
-        response = requests.post(
-            "https://ce-api.classplus.co/v3/Communications/email/internal/superuser",
-            json=data,
-            headers=headers
-        )
-        print("📨 Status Code:", response.status_code)
-        print("📨 Response:", response.text)
+        response = requests.post(api_url, json=data, headers=headers)
         return {
             "status": "✅ Sent successfully" if response.status_code == 200 else "❌ Failed to send",
             "details": response.text
         }
     except Exception as e:
-        print("❌ Exception:", str(e))
         return {
-            "status": "❌ Error occurred",
+            "status": "❌ Failed to send",
             "details": str(e)
         }
