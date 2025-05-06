@@ -1,66 +1,48 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import requests
+import os
 
 app = FastAPI()
 
-# Allow Bolt to connect
+# CORS for Bolt
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, restrict this to your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Define candidate schema
-class Candidate(BaseModel):
-    Name: str
-    Tags: str = ""
-    Bio: str
-    Skills: list
-    Badges: str = ""
-    Coding_Hours: int
-    Projects_Completed: int
-    Top_Project_Name: str
-    Top_Project_Desc: str
-    Top_Project_Link: str
-    Certification_Title: str = ""
-    Internship_Type: str = ""
-    Internship_Location: str = ""
-    Internship_Duration: str = ""
-    Email: str
-    Phone: str
-    CGPA: float
-
-# Define email payload schema
+# Request schema
 class EmailRequest(BaseModel):
     recipient_email: str
     recipient_name: str
     subject: str
-    candidates: list[Candidate]
+    candidates: list
 
 @app.post("/send_candidate_list_email/")
 async def send_email(payload: EmailRequest):
     print("✅ Received payload:", payload.dict())
 
-    html_content = f"""
+    # Build HTML
+    html = """
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.5; color: #333; }}
-            table {{ border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 14px; }}
-            th, td {{ padding: 10px; border: 1px solid #ddd; text-align: left; }}
-            th {{ background-color: #f5f5f5; }}
-            h2 {{ color: #1a1a1a; }}
-            p.footer {{ margin-top: 24px; }}
+            body { font-family: Arial, sans-serif; color: #333; line-height: 1.5; }
+            table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+            th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+            th { background-color: #f5f5f5; }
+            a { color: #2a7ae2; text-decoration: none; }
+            p.footer { margin-top: 24px; }
         </style>
     </head>
     <body>
-        <h2>Hello Recruiter,</h2>
+        <h2>Hello {recipient_name},</h2>
         <p>Here is the list of shortlisted candidates for your review:</p>
         <table>
             <thead>
@@ -81,31 +63,28 @@ async def send_email(payload: EmailRequest):
                 </tr>
             </thead>
             <tbody>
-    """
+    """.replace("{recipient_name}", payload.recipient_name)
 
     for c in payload.candidates:
-        skills = ", ".join(c.Skills)
-        top_project_html = f"<strong>{c.Top_Project_Name}</strong><br>{c.Top_Project_Desc}<br><a href='{c.Top_Project_Link}'>View Project</a>"
-        looking_for = f"{c.Internship_Location} | {c.Internship_Type} | {c.Internship_Duration}"
-        html_content += f"""
+        html += f"""
             <tr>
-                <td>{c.Name}</td>
-                <td>{c.Tags}</td>
-                <td>{c.Bio}</td>
-                <td>{skills}</td>
-                <td>{c.Badges}</td>
-                <td>{c.Coding_Hours}</td>
-                <td>{c.Projects_Completed}</td>
-                <td>{top_project_html}</td>
-                <td>{c.Certification_Title}</td>
-                <td>{looking_for}</td>
-                <td>{c.Email}</td>
-                <td>{c.Phone}</td>
-                <td>{c.CGPA}</td>
+                <td>{c.get('Name', '')}</td>
+                <td>{c.get('Tags', '')}</td>
+                <td>{c.get('Bio', '')}</td>
+                <td>{', '.join(c.get('Skills', []))}</td>
+                <td>{c.get('Badges', '')}</td>
+                <td>{c.get('Coding_Hours', '')}</td>
+                <td>{c.get('Projects_Completed', '')}</td>
+                <td><strong>{c.get('Top_Project_Name', '')}</strong><br>{c.get('Top_Project_Description', '')}<br><a href="{c.get('Top_Project_Link', '#')}">View Project</a></td>
+                <td>{c.get('Certifications', '')}</td>
+                <td>{c.get('Internship_Preferences', '')}</td>
+                <td>{c.get('Email', '')}</td>
+                <td>{c.get('Phone', '')}</td>
+                <td>{c.get('CGPA', '')}</td>
             </tr>
         """
 
-    html_content += """
+    html += """
             </tbody>
         </table>
         <p class="footer">
@@ -116,7 +95,7 @@ async def send_email(payload: EmailRequest):
     </html>
     """
 
-    # Classplus mail API
+    # Prepare email payload for internal API
     data = {
         "orgId": 170,
         "senderId": 1,
@@ -127,11 +106,11 @@ async def send_email(payload: EmailRequest):
             "from": "pst@ce.classplus.co",
             "templateData": [],
             "subject": payload.subject,
-            "content": html_content,
+            "content": html,
             "attachmentUrls": []
         },
         "priority": "P2",
-        "uuid": "polaris-2025-final-schema"
+        "uuid": "polaris-2025-full-final"
     }
 
     headers = {
@@ -139,18 +118,28 @@ async def send_email(payload: EmailRequest):
         "Content-Type": "application/json"
     }
 
+    # Debug logs
+    print("🔑 API Key Loaded")
+    print("📬 Sending from:", data["email"]["from"])
+    print("📬 Sending to:", data["email"]["to"])
+    print("📦 Payload:", data)
+
+    # Make POST request
     try:
         response = requests.post(
             "https://ce-api.classplus.co/v3/Communications/email/internal/superuser",
             json=data,
             headers=headers
         )
+        print("📨 Status Code:", response.status_code)
+        print("📨 Response:", response.text)
         return {
             "status": "✅ Sent successfully" if response.status_code == 200 else "❌ Failed to send",
             "details": response.text
         }
     except Exception as e:
+        print("❌ Exception:", str(e))
         return {
-            "status": "❌ Failed to send",
+            "status": "❌ Error occurred",
             "details": str(e)
         }
