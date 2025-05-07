@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -6,78 +6,118 @@ import requests
 
 app = FastAPI()
 
-# ✅ CORS: allow frontend from Netlify to call this API
+# Allow CORS for Bolt frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or use ["https://chic-klepon-77ad14.netlify.app"] for strict mode
+    allow_origins=["*"],  # You can restrict this to your frontend domain later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ Hardcoded API key (replace with env later)
-API_KEY = "N6FPaqWC658jH0d7u7Qoh7xTugP5Mw_IJQGjbnQXkUmDL-9hCaVFQg"
+# TEMP: Hardcoded API key for debugging
+API_KEY = "N6FpaqWC658jH0d7u7Qoh7xTugP5Mw_IJQGjbRnQXKuImDL-9hCaVFQg"  # ⚠️ Remove this later
 
-# === MODELS ===
-class Project(BaseModel):
+# ---------- Models ----------
+class TopProject(BaseModel):
     name: str
     description: str
     link: Optional[str] = ""
 
-class LookingFor(BaseModel):
+class InternshipPreference(BaseModel):
     type: str
     location: str
     duration: str
 
 class Candidate(BaseModel):
     Name: str
-    Tags: Optional[List[str]] = []
+    Tags: str
     Bio: str
     Skills: List[str]
-    Badges: Optional[List[str]] = []
+    Badges: List[str]
     CGPA: Optional[float]
-    Certifications: Optional[List[str]] = []
-    Coding_Hours: Optional[int]
-    Projects_Completed: Optional[int]
-    Top_Project: Optional[Project]
-    Looking_For: Optional[LookingFor]
-    Email: Optional[str]
-    Phone: Optional[str]
+    Certifications: List[str]
+    Coding_Hours: str
+    Projects_Completed: str
+    Top_Project: TopProject
+    Looking_For: InternshipPreference
+    Email: str
+    Phone: str
 
-class EmailRequest(BaseModel):
+class CandidateEmailRequest(BaseModel):
     recipient_email: str
     recipient_name: str
     subject: str
     candidates: List[Candidate]
 
-# === EMAIL API ===
+# ---------- Email Formatter ----------
+def build_html_email(candidates: List[Candidate]) -> str:
+    rows = ""
+    for c in candidates:
+        rows += f"""
+        <tr>
+            <td style="padding: 10px; border: 1px solid #ccc;"><strong>{c.Name}</strong><br>
+                <small>{c.Tags}</small><br><br>
+                <strong>Skills:</strong> {', '.join(c.Skills)}<br>
+                <strong>CGPA:</strong> {c.CGPA or '—'}<br>
+                <strong>Badges:</strong> {', '.join(c.Badges)}<br>
+                <strong>Certifications:</strong> {', '.join(c.Certifications)}<br><br>
+                <strong>Top Project:</strong> {c.Top_Project.name}<br>
+                {c.Top_Project.description}<br>
+                <a href="{c.Top_Project.link}" target="_blank">{c.Top_Project.link}</a><br><br>
+                <strong>Internship Pref:</strong> {c.Looking_For.type}, {c.Looking_For.location}, {c.Looking_For.duration}<br>
+                <strong>Email:</strong> {c.Email}<br>
+                <strong>Phone:</strong> {c.Phone}
+            </td>
+        </tr>
+        """
+
+    return f"""
+    <html>
+    <body>
+        <h2>Your Shortlisted Polaris Candidates</h2>
+        <table style="width:100%; border-collapse: collapse; font-family: Arial, sans-serif;">
+            {rows}
+        </table>
+        <br>
+        <p style="font-size: 12px; color: #888;">Sent via Polaris School of Technology</p>
+    </body>
+    </html>
+    """
+
+# ---------- Email Sending Endpoint ----------
 @app.post("/send_candidate_list_email/")
-def send_candidate_list_email(payload: EmailRequest):
+async def send_email(payload: CandidateEmailRequest):
+    html_body = build_html_email(payload.candidates)
+
+    email_payload = {
+        "to": [payload.recipient_email],
+        "subject": payload.subject,
+        "body": html_body,
+        "bodyType": "html",
+        "sender": {
+            "email": "connect@emails.testbook.com",
+            "name": "Polaris Campus"
+        }
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "api_key": API_KEY  # hardcoded for now
+    }
+
     try:
-        html_content = generate_html(payload)
-
-        data = {
-            "to": [payload.recipient_email],
-            "subject": payload.subject,
-            "body": html_content
-        }
-
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": API_KEY
-        }
-
         response = requests.post(
             "https://ce-api.classplus.co/v3/Communications/email/internal/superuser",
-            json=data,
+            json=email_payload,
             headers=headers
         )
 
         print("📤 Status Code:", response.status_code)
-        print("📤 Response:", response.text)
+        print("📩 Response Text:", response.text)
 
         return {
-            "status": "✅ Sent" if response.status_code == 200 else "❌ Failed to send",
+            "status": "✅ Sent" if response.status_code == 200 else "❌ Failed",
             "details": response.text
         }
 
@@ -87,61 +127,3 @@ def send_candidate_list_email(payload: EmailRequest):
             "status": "❌ Exception",
             "details": str(e)
         }
-
-# === HTML BUILDER ===
-def generate_html(payload: EmailRequest):
-    rows = ""
-    for c in payload.candidates:
-        tags = ", ".join(c.Tags) if c.Tags else ""
-        skills = ", ".join(c.Skills)
-        badges = ", ".join(c.Badges) if c.Badges else ""
-        certs = ", ".join(c.Certifications) if c.Certifications else ""
-        project = f"<strong>{c.Top_Project.name}</strong>: {c.Top_Project.description} <a href='{c.Top_Project.link}'>View</a>" if c.Top_Project else ""
-        looking = f"{c.Looking_For.location} | {c.Looking_For.type} | {c.Looking_For.duration}" if c.Looking_For else ""
-
-        rows += f"""
-        <tr>
-            <td>{c.Name}</td>
-            <td>{tags}</td>
-            <td>{c.Bio}</td>
-            <td>{skills}</td>
-            <td>{badges}</td>
-            <td>{c.Coding_Hours}</td>
-            <td>{c.Projects_Completed}</td>
-            <td>{project}</td>
-            <td>{certs}</td>
-            <td>{looking}</td>
-            <td>{c.Email}</td>
-            <td>{c.Phone}</td>
-            <td>{c.CGPA if c.CGPA else ''}</td>
-        </tr>
-        """
-
-    return f"""
-    <html>
-    <body>
-        <h3>Hello Recruiter,</h3>
-        <p>Here is the list of shortlisted candidates:</p>
-        <table border="1" cellspacing="0" cellpadding="6">
-            <tr>
-                <th>Name</th>
-                <th>Tags</th>
-                <th>Bio</th>
-                <th>Skills</th>
-                <th>Badges</th>
-                <th>Coding Hours</th>
-                <th>Projects Completed</th>
-                <th>Top Project</th>
-                <th>Certifications</th>
-                <th>Looking For</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>CGPA</th>
-            </tr>
-            {rows}
-        </table>
-        <br />
-        <p>– Polaris Campus Team</p>
-    </body>
-    </html>
-    """
