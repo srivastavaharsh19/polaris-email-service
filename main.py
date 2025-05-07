@@ -4,9 +4,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 import requests
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = FastAPI()
 
