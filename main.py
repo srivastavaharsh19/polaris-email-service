@@ -156,16 +156,23 @@ async def send_email(payload: EmailRequest):
     print("📦 Final Payload:", data)
 
     try:
-        response = requests.post("https://ce-api.classplus.co/v3/Communications/email/internal/superuser", json=data, headers=headers)
-        print("📨 Status Code:", response.status_code)
-        print("📨 Response:", response.text)
+        print("📦 Sending this payload:")
+        print(json.dumps(data, indent=2))  # Pretty-print payload
+        response = requests.post(
+            "https://ce-api.classplus.co/v3/Communications/email/internal/superuser",
+            json=data,
+            headers=headers
+        )
+        print("📬 Status Code:", response.status_code)
+        print("📬 Response:", response.text)
 
         return {
             "status": "✅ Sent" if response.status_code == 200 else "❌ Failed",
             "details": response.text
         }
+
     except Exception as e:
-        print("❌ Exception:", str(e))
+        print("❌ Exception while sending email:", str(e))
         return {
             "status": "❌ Exception",
             "details": str(e)
