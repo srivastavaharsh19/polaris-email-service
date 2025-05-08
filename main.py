@@ -7,16 +7,14 @@ import requests
 
 app = FastAPI()
 
-# Allow frontend (Bolt/Netlify) origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict this later to your Netlify domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ----------------- DATA SCHEMA --------------------
 class Project(BaseModel):
     name: str
     description: str
@@ -48,7 +46,6 @@ class EmailPayload(BaseModel):
     subject: str
     candidates: List[Candidate]
 
-# -------------- EMAIL HTML GENERATOR ---------------
 def build_html(candidates: List[Candidate]) -> str:
     rows = ""
     for c in candidates:
@@ -90,10 +87,12 @@ def build_html(candidates: List[Candidate]) -> str:
     </body></html>
     """
 
-# ----------------- ENDPOINT -----------------------
 @app.post("/send_candidate_list_email/")
 async def send_email(payload: EmailPayload, x_api_key: Optional[str] = Header(None)):
     expected_api_key = os.getenv("CLASSPLUS_EMAIL_API_KEY")
+
+    # ✅ Log environment variable to confirm it's loaded
+    print("🧪 Loaded CLASSPLUS_EMAIL_API_KEY:", expected_api_key)
 
     if x_api_key != expected_api_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -117,14 +116,18 @@ async def send_email(payload: EmailPayload, x_api_key: Optional[str] = Header(No
             "uuid": f"polaris-{payload.recipient_email}-{os.urandom(4).hex()}"
         }
 
-        # ✅ Corrected: Use 'api_key' header for Classplus internal API
+        # ✅ Debug: Log outgoing request
+        headers = {
+            "Content-Type": "application/json",
+            "api_key": expected_api_key
+        }
+        print("📤 Sending headers to Classplus:", headers)
+        print("📤 Sending payload:", final_payload)
+
         response = requests.post(
             "https://ce-api.classplus.co/v3/Communications/email/internal/superuser",
             json=final_payload,
-            headers={
-                "Content-Type": "application/json",
-                "api_key": os.getenv("CLASSPLUS_EMAIL_API_KEY")
-            }
+            headers=headers
         )
 
         return {
