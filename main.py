@@ -10,7 +10,7 @@ app = FastAPI()
 # Allow frontend (Bolt/Netlify) origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict this later to specific domains
+    allow_origins=["*"],  # You can restrict this later to your Netlify domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -117,7 +117,7 @@ async def send_email(payload: EmailPayload, x_api_key: Optional[str] = Header(No
             "uuid": f"polaris-{payload.recipient_email}-{os.urandom(4).hex()}"
         }
 
-        # ✅ FIXED: Send the required `api_key` header in this request
+        # ✅ Corrected: Use 'api_key' header for Classplus internal API
         response = requests.post(
             "https://ce-api.classplus.co/v3/Communications/email/internal/superuser",
             json=final_payload,
