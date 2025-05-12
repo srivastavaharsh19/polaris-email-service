@@ -17,7 +17,7 @@ app = FastAPI(
 # ✅ CORS Middleware (allows Bolt + Postman to work)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # You can restrict this to your Bolt domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,7 +104,14 @@ def build_html(candidates: List[Candidate]) -> str:
 
 @app.post("/send_candidate_list_email/")
 async def send_email(payload: EmailPayload):
-    print("🚀 This is the CLEAN version without recipient_name")
+    print("🚀 CLEAN version without recipient_name")
+    print("📦 Incoming recipient:", payload.recipient_email)
+
+    api_key = os.getenv("CLASSPLUS_EMAIL_API_KEY")
+    print("🔐 Loaded API Key:", "✔️ Found" if api_key else "❌ Missing")
+
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Missing email API key")
 
     try:
         email_body = build_html(payload.candidates)
@@ -130,7 +137,7 @@ async def send_email(payload: EmailPayload):
             json=final_payload,
             headers={
                 "Content-Type": "application/json",
-                "api_key": os.getenv("CLASSPLUS_EMAIL_API_KEY")
+                "api_key": api_key
             }
         )
 
