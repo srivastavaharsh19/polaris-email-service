@@ -5,7 +5,7 @@ from typing import List, Optional
 import os
 import requests
 
-app = FastAPI()
+app = FastAPI(title="Polaris Email Service")
 
 # CORS middleware
 app.add_middleware(
