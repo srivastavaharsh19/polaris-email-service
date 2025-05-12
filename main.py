@@ -1,22 +1,30 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import os
 import requests
 
-app = FastAPI(title="Polaris Email Service")
+# ✅ FastAPI instance with docs enabled
+app = FastAPI(
+    title="Polaris Email Service",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
+)
 
-# CORS middleware
+# ✅ CORS Middleware (allows Bolt + Postman to work)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with Netlify URL in prod
+    allow_origins=["*"],  # You can restrict this to your Bolt domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# -------- Data Schemas --------
+# -------------------- DATA SCHEMA --------------------
+
 class Project(BaseModel):
     name: str
     description: str
@@ -47,7 +55,8 @@ class EmailPayload(BaseModel):
     subject: str
     candidates: List[Candidate]
 
-# -------- HTML Builder --------
+# -------------------- EMAIL HTML BUILDER --------------------
+
 def build_html(candidates: List[Candidate]) -> str:
     rows = ""
     for c in candidates:
@@ -60,63 +69,75 @@ def build_html(candidates: List[Candidate]) -> str:
             <td>{", ".join(c.Badges)}</td>
             <td>{c.Coding_Hours}</td>
             <td>{c.Projects_Completed}</td>
-            <td><strong>{c.Top_Project.name}</strong><br>{c.Top_Project.description}<br><a href="{c.Top_Project.link}">View</a></td>
+            <td><strong>{c.Top_Project.name}</strong><br>{c.Top_Project.description}<br><a href="{c.Top_Project.link}">View Project</a></td>
             <td>{", ".join(c.Certifications)}</td>
             <td>{c.Looking_For.type} | {c.Looking_For.location} | {c.Looking_For.duration}</td>
             <td>{c.Email}</td>
             <td>{c.Phone}</td>
             <td>{c.CGPA}</td>
-        </tr>
-        """
+        </tr>"""
 
     return f"""
-    <html><body>
+    <!DOCTYPE html>
+    <html><head>
+    <style>
+    body {{ font-family: Arial, sans-serif; line-height: 1.5; color: #333; }}
+    table {{ border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 14px; }}
+    th, td {{ padding: 10px; border: 1px solid #ddd; text-align: left; }}
+    th {{ background-color: #f5f5f5; }}
+    </style></head><body>
     <h2>Hello Recruiter,</h2>
     <p>Here is the list of shortlisted candidates:</p>
-    <table border="1" cellpadding="6" cellspacing="0">
-        <tr>
-            <th>Name</th><th>Tags</th><th>Bio</th><th>Skills</th><th>Badges</th>
+    <table>
+        <thead>
+            <tr><th>Name</th><th>Tags</th><th>Bio</th><th>Skills</th><th>Badges</th>
             <th>Coding Hours</th><th>Projects Completed</th><th>Top Project</th>
-            <th>Certifications</th><th>I'm Looking For</th><th>Email</th><th>Phone</th><th>CGPA</th>
-        </tr>
-        {rows}
+            <th>Certifications</th><th>I'm Looking For</th><th>Email</th><th>Phone</th><th>CGPA</th></tr>
+        </thead>
+        <tbody>{rows}</tbody>
     </table>
-    <p>Regards,<br>Polaris Campus Team</p>
+    <p>Regards,<br><strong>Polaris Campus Team</strong></p>
     </body></html>
     """
 
-print("🚀 This is the CLEAN version without recipient_name")
-# -------- Email Endpoint --------
+# -------------------- EMAIL ENDPOINT --------------------
+
 @app.post("/send_candidate_list_email/")
-def send_email(payload: EmailPayload):
-    html_body = build_html(payload.candidates)
+async def send_email(payload: EmailPayload):
+    print("🚀 This is the CLEAN version without recipient_name")
 
-    email_payload = {
-        "orgId": 170,
-        "senderId": 1,
-        "service": 14,
-        "email": {
-            "to": [payload.recipient_email],
-            "cc": [],
-            "from": "pst@ce.classplus.co",
-            "templateData": [],
-            "subject": payload.subject,
-            "content": html_body
-        },
-        "priority": "P2",
-        "uuid": f"polaris-{payload.recipient_email}"
-    }
+    try:
+        email_body = build_html(payload.candidates)
 
-    response = requests.post(
-        "https://ce-api.classplus.co/v3/Communications/email/internal/superuser",
-        json=email_payload,
-        headers={
-            "Content-Type": "application/json",
-            "api_key": os.getenv("CLASSPLUS_EMAIL_API_KEY")
+        final_payload = {
+            "orgId": 170,
+            "senderId": 1,
+            "service": 14,
+            "email": {
+                "to": [payload.recipient_email],
+                "cc": [],
+                "from": "pst@ce.classplus.co",
+                "templateData": [],
+                "subject": payload.subject,
+                "content": email_body
+            },
+            "priority": "P2",
+            "uuid": f"polaris-{payload.recipient_email}-{os.urandom(4).hex()}"
         }
-    )
 
-    return {
-        "status": "✅ Sent" if response.status_code == 200 else "❌ Failed",
-        "response": response.text
-    }
+        response = requests.post(
+            "https://ce-api.classplus.co/v3/Communications/email/internal/superuser",
+            json=final_payload,
+            headers={
+                "Content-Type": "application/json",
+                "api_key": os.getenv("CLASSPLUS_EMAIL_API_KEY")
+            }
+        )
+
+        return {
+            "status": "✅ Sent" if response.status_code == 200 else "❌ Failed to send",
+            "details": response.text
+        }
+
+    except Exception as e:
+        return {"status": "❌ Exception", "details": str(e)}
