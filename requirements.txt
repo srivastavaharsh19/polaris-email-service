@@ -3,3 +3,4 @@ uvicorn
 pydantic
 requests
 jinja2
+gunicorn
