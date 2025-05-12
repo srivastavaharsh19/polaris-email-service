@@ -85,6 +85,7 @@ def build_html(candidates: List[Candidate]) -> str:
     </body></html>
     """
 
+print("🚀 This is the CLEAN version without recipient_name")
 # -------- Email Endpoint --------
 @app.post("/send_candidate_list_email/")
 def send_email(payload: EmailPayload):
