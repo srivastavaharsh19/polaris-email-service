@@ -17,7 +17,7 @@ app = FastAPI(
 # ✅ CORS Middleware (allows Bolt + Postman to work)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict this to your Bolt domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,19 +36,19 @@ class InternshipPreference(BaseModel):
     duration: str
 
 class Candidate(BaseModel):
-    Name: str
-    Tags: Optional[str] = ""
-    Bio: Optional[str] = ""
-    Skills: List[str]
-    Badges: List[str]
-    CGPA: Optional[float]
-    Certifications: List[str]
-    Coding_Hours: str
-    Projects_Completed: str
-    Top_Project: Project
-    Looking_For: InternshipPreference
-    Email: str
-    Phone: str
+    name: str
+    tags: Optional[str] = ""
+    bio: Optional[str] = ""
+    skills: List[str]
+    badges: List[str]
+    cgpa: Optional[float]
+    certifications: List[str]
+    coding_hours: str
+    projects_completed: str
+    top_project: Project
+    looking_for: InternshipPreference
+    email: str
+    phone: str
 
 class EmailPayload(BaseModel):
     recipient_email: str
@@ -62,19 +62,19 @@ def build_html(candidates: List[Candidate]) -> str:
     for c in candidates:
         rows += f"""
         <tr>
-            <td>{c.Name}</td>
-            <td>{c.Tags}</td>
-            <td>{c.Bio}</td>
-            <td>{", ".join(c.Skills)}</td>
-            <td>{", ".join(c.Badges)}</td>
-            <td>{c.Coding_Hours}</td>
-            <td>{c.Projects_Completed}</td>
-            <td><strong>{c.Top_Project.name}</strong><br>{c.Top_Project.description}<br><a href="{c.Top_Project.link}">View Project</a></td>
-            <td>{", ".join(c.Certifications)}</td>
-            <td>{c.Looking_For.type} | {c.Looking_For.location} | {c.Looking_For.duration}</td>
-            <td>{c.Email}</td>
-            <td>{c.Phone}</td>
-            <td>{c.CGPA}</td>
+            <td>{c.name}</td>
+            <td>{c.tags}</td>
+            <td>{c.bio}</td>
+            <td>{", ".join(c.skills)}</td>
+            <td>{", ".join(c.badges)}</td>
+            <td>{c.coding_hours}</td>
+            <td>{c.projects_completed}</td>
+            <td><strong>{c.top_project.name}</strong><br>{c.top_project.description}<br><a href="{c.top_project.link}">View Project</a></td>
+            <td>{", ".join(c.certifications)}</td>
+            <td>{c.looking_for.type} | {c.looking_for.location} | {c.looking_for.duration}</td>
+            <td>{c.email}</td>
+            <td>{c.phone}</td>
+            <td>{c.cgpa}</td>
         </tr>"""
 
     return f"""
